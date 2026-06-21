@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: weather-rp5-service
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: weather-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: APP_PASSWORD
+        generateValue: true
