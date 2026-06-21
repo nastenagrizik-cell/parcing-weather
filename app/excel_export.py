@@ -11,17 +11,21 @@ def _normalize_frame(df: pd.DataFrame) -> pd.DataFrame:
     for col in RP5_CANONICAL_COLUMNS:
         if col not in frame.columns:
             frame[col] = None
-    ordered = frame[RP5_CANONICAL_COLUMNS]
-    return ordered
+    return frame[RP5_CANONICAL_COLUMNS]
 
 
-def build_excel(city_frames: dict, output_dir: str, date_from: str, date_to: str) -> str:
+def build_excel(city_frames: dict, output_dir: str, date_from: str, date_to: str, messages: list[str] | None = None) -> str:
     os.makedirs(output_dir, exist_ok=True)
     pretty_name = f'Архив_погоды_{date_from}_{date_to}.xlsx'
     path = os.path.join(output_dir, translit_filename(pretty_name))
 
     normalized_frames = {sheet: _normalize_frame(df) for sheet, df in city_frames.items()}
-    all_df = pd.concat(normalized_frames.values(), ignore_index=True) if normalized_frames else pd.DataFrame(columns=RP5_CANONICAL_COLUMNS)
+    all_df = (
+        pd.concat(normalized_frames.values(), ignore_index=True)
+        if normalized_frames
+        else pd.DataFrame(columns=RP5_CANONICAL_COLUMNS)
+    )
+
     columns_map = pd.DataFrame([
         ['local_date', 'Локальная дата'],
         ['local_time', 'Локальное время'],
@@ -60,19 +64,26 @@ def build_excel(city_frames: dict, output_dir: str, date_from: str, date_to: str
         ['sss', 'Высота снежного покрова'],
     ], columns=['column_name', 'description'])
 
+    readme_rows = [
+        ['Файл', pretty_name],
+        ['Создан', datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+        ['Период', f'{date_from} — {date_to}'],
+        ['Успешных городов', len(normalized_frames)],
+        ['Листы', 'README, ALL_DATA, COLUMNS_MAP' + (', ' + ', '.join(normalized_frames.keys()) if normalized_frames else '')],
+        ['Принцип выравнивания', 'Все городские данные приводятся к единой схеме колонок, чтобы значения не сдвигались на общем листе.'],
+    ]
+
+    if messages:
+        for i, msg in enumerate(messages, start=1):
+            readme_rows.append([f'Статус {i}', msg])
+
+    readme = pd.DataFrame(readme_rows, columns=['Параметр', 'Значение'])
+
     with pd.ExcelWriter(path, engine='openpyxl') as writer:
-        readme = pd.DataFrame([
-            ['Файл', pretty_name],
-            ['Создан', datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
-            ['Период', f'{date_from} — {date_to}'],
-            ['Городов', len(normalized_frames)],
-            ['Листы', 'README, ALL_DATA, COLUMNS_MAP, ' + ', '.join(normalized_frames.keys())],
-            ['Принцип выравнивания', 'Все городские данные приводятся к единой схеме колонок, чтобы значения не сдвигались на общем листе.'],
-            ['Примечание', 'В этой версии загрузчик RP5 остается MVP-заглушкой, но структура входа и Excel уже подготовлена под реальные неоднородные выгрузки.'],
-        ], columns=['Параметр', 'Значение'])
         readme.to_excel(writer, sheet_name='README', index=False)
         all_df.to_excel(writer, sheet_name='ALL_DATA', index=False)
         columns_map.to_excel(writer, sheet_name='COLUMNS_MAP', index=False)
+
         for sheet_name, df in normalized_frames.items():
             df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
 
@@ -81,4 +92,5 @@ def build_excel(city_frames: dict, output_dir: str, date_from: str, date_to: str
         for cell in ws[1]:
             cell.font = Font(bold=True)
     wb.save(path)
+
     return path
