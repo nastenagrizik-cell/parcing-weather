@@ -10,20 +10,19 @@
   <main class="container">
     <section class="hero">
       <h1>Архив погоды RP5</h1>
-      <p>Ручной список городов, автогенерация названий листов и единая схема колонок для общего Excel-листа.</p>
+      <p>Добавляй только города, а сервис сам подставит заранее выбранную станцию RP5 и соберёт Excel.</p>
     </section>
 
     <section class="grid">
       <div class="card">
         <h2>Добавить город</h2>
         <form method="post" action="/cities/add" class="stack">
-          <label>Название города или станции
-            <input type="text" name="name" placeholder="Москва (ВДНХ)" required>
+          <label>Название города
+            <input type="text" name="name" placeholder="Москва" required>
           </label>
-          <label>Ссылка на архив RP5
-            <input type="url" name="rp5_url" placeholder="https://rp5.ru/..." required>
+          <label class="checkbox">
+            <input type="checkbox" name="is_active" checked> Активен для выгрузки
           </label>
-          <label class="checkbox"><input type="checkbox" name="is_active" checked> Активен для выгрузки</label>
           <button type="submit">Добавить</button>
         </form>
       </div>
@@ -31,8 +30,8 @@
       <div class="card">
         <h2>Массовое добавление</h2>
         <form method="post" action="/cities/bulk-add" class="stack">
-          <label>По одной строке в формате <code>Город | URL</code>
-            <textarea name="cities_text" rows="8" placeholder="Москва (ВДНХ) | https://rp5.ru/...&#10;Курск / Поповка | https://rp5.ru/...&#10;Владивосток | https://rp5.ru/..."></textarea>
+          <label>По одному городу на строку
+            <textarea name="cities_text" rows="8" placeholder="Москва&#10;Санкт-Петербург&#10;Владивосток"></textarea>
           </label>
           <button type="submit">Добавить списком</button>
         </form>
@@ -51,10 +50,11 @@
         <button type="submit">Собрать Excel</button>
         <a class="secondary" href="/export/latest">Скачать последнюю выгрузку</a>
       </form>
+
       {% if last_run %}
       <div class="status">
         <p><strong>Последний запуск:</strong> {{ last_run.status }}</p>
-        <p>{{ last_run.message or '' }}</p>
+        <pre style="white-space: pre-wrap;">{{ last_run.message or '' }}</pre>
       </div>
       {% endif %}
     </section>
@@ -63,14 +63,19 @@
       <h2>Список городов</h2>
       <table>
         <thead>
-          <tr><th>Город</th><th>URL</th><th>sheet_name</th><th></th></tr>
+          <tr>
+            <th>Город</th>
+            <th>Лист Excel</th>
+            <th>Источник</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody>
         {% for city in cities %}
           <tr>
             <td>{{ city.name }}</td>
-            <td class="url">{{ city.rp5_url }}</td>
             <td>{{ city.sheet_name }}</td>
+            <td>Автовыбор из словаря станций</td>
             <td>
               <form method="post" action="/cities/{{ city.id }}/delete">
                 <button type="submit" class="danger">Удалить</button>
@@ -78,7 +83,9 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="4">Пока нет городов.</td></tr>
+          <tr>
+            <td colspan="4">Пока нет городов.</td>
+          </tr>
         {% endfor %}
         </tbody>
       </table>
