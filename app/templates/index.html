@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RP5 — выгрузка в Excel</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <section class="hero card">
+      <h1>Выгрузка архива погоды RP5</h1>
+      <p class="lead">Финальная бесплатная версия: загружаешь CSV только с названиями городов, сервис сам пытается найти архивную страницу RP5 и собрать единый Excel.</p>
+    </section>
+
+    <section class="card">
+      <h2>Как это работает</h2>
+      <ol>
+        <li>Подготовь CSV-файл со столбцами <code>name</code> и <code>sheet_name</code>.</li>
+        <li>Выбери дату начала и дату конца.</li>
+        <li>Загрузи CSV и нажми кнопку.</li>
+        <li>Сервис попытается найти архивную станцию RP5 по названию города, скачать данные и собрать один Excel.</li>
+      </ol>
+      <p class="note">Если по городу найдено несколько похожих станций, в Excel появится статус <code>ambiguous</code>. В этом случае нужно уточнить название города/станции.</p>
+      <p><a href="/static/cities_example.csv" download>Скачать пример CSV</a></p>
+    </section>
+
+    <section class="card">
+      <h2>Запуск выгрузки</h2>
+      <form method="post" action="/export" enctype="multipart/form-data" class="grid-form">
+        <label>Дата начала
+          <input type="date" name="date_from" required>
+        </label>
+        <label>Дата конца
+          <input type="date" name="date_to" required>
+        </label>
+        <label>CSV со списком городов
+          <input type="file" name="cities_file" accept=".csv" required>
+        </label>
+        <button type="submit">Сформировать Excel</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Структура CSV</h2>
+      <table>
+        <thead>
+          <tr><th>Колонка</th><th>Что писать</th><th>Пример</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>name</td><td>Название города</td><td>Москва</td></tr>
+          <tr><td>sheet_name</td><td>Короткое имя листа Excel</td><td>Moscow</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>
