@@ -1,7 +1,10 @@
 import os
+import logging
+import traceback
 from datetime import datetime
+
 from fastapi import FastAPI, Request, Form, Depends, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -10,6 +13,10 @@ from .db import SessionLocal, engine, Base
 from .models import City, RunLog
 from .parser import fetch_city_weather, sanitize_sheet_name, resolve_station
 from .excel_export import build_excel
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title='Погодный архив RP5')
@@ -31,30 +38,47 @@ def get_db():
         db.close()
 
 
+@app.head("/", response_class=PlainTextResponse)
+def head_index():
+    return PlainTextResponse("ok", status_code=200)
+
+
 def run_export_task(run_id: int, date_from: str, date_to: str):
     db = SessionLocal()
     run = None
+
+    logger.info("START export task: run_id=%s, date_from=%s, date_to=%s", run_id, date_from, date_to)
 
     try:
         run = db.query(RunLog).filter(RunLog.id == run_id).first()
         cities = db.query(City).filter(City.is_active == True).order_by(City.name).all()
 
+        logger.info("ACTIVE cities count: %s", len(cities))
+
         frames = {}
         messages = []
 
         for city in cities:
+            logger.info("PROCESS city: %s", city.name)
+
             try:
                 station = resolve_station(city.name)
+                logger.info("RESOLVED station for %s: %s", city.name, station)
+
                 sheet_name = city.sheet_name or sanitize_sheet_name(city.name)
-
                 frame = fetch_city_weather(city.name, date_from, date_to)
-                frames[sheet_name] = frame
 
-                messages.append(
-                    f"OK: {city.name} -> {station['station_name']} -> {sheet_name}"
-                )
+                logger.info("FETCHED rows for %s: %s", city.name, len(frame))
+
+                frames[sheet_name] = frame
+                messages.append(f"OK: {city.name} -> {station['station_name']} -> {sheet_name}")
+
             except Exception as e:
-                messages.append(f"ERROR: {city.name} — {e}")
+                err_text = f"ERROR: {city.name} — {e}"
+                logger.exception("FAILED city: %s", city.name)
+                messages.append(err_text)
+
+        logger.info("SUCCESS frames count: %s", len(frames))
 
         output_file = build_excel(
             city_frames=frames,
@@ -64,17 +88,23 @@ def run_export_task(run_id: int, date_from: str, date_to: str):
             messages=messages,
         )
 
+        logger.info("EXCEL built: %s", output_file)
+
         run.status = 'done'
         run.finished_at = datetime.now()
         run.output_file = output_file
         run.message = '\n'.join(messages) if messages else 'Выгрузка завершена'
         db.commit()
 
+        logger.info("RUN completed: run_id=%s", run_id)
+
     except Exception as e:
+        logger.exception("FATAL export task error: run_id=%s", run_id)
+
         if run:
             run.status = 'error'
             run.finished_at = datetime.now()
-            run.message = str(e)
+            run.message = f"{e}\n\n{traceback.format_exc()}"
             db.commit()
     finally:
         db.close()
