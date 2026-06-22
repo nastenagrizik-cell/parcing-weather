@@ -1,96 +1,59 @@
-import os
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List
+
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.styles import Font
-from .parser import RP5_CANONICAL_COLUMNS, translit_filename
+from openpyxl.utils import get_column_letter
+
+CANONICAL_COLUMNS = [
+    "local_date", "local_time", "datetime_local", "city", "station_name", "wmo_id", "source_url",
+    "T", "Po", "P", "Pa", "U", "DD", "Ff", "ff10", "ff3", "N", "WW", "W1", "W2",
+    "Tn", "Tx", "Cl", "Nh", "H", "Cm", "Ch", "VV", "Td", "RRR", "tR", "E", "Tg", "Eprime", "sss",
+]
 
 
-def _normalize_frame(df: pd.DataFrame) -> pd.DataFrame:
-    frame = df.copy()
-    for col in RP5_CANONICAL_COLUMNS:
-        if col not in frame.columns:
-            frame[col] = None
-    return frame[RP5_CANONICAL_COLUMNS]
+def build_excel(city_frames: Dict[str, pd.DataFrame], output_dir: str, date_from: str, date_to: str, messages: List[str]) -> str:
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    out_path = Path(output_dir) / f'arhiv_pogody_{date_from}_{date_to}_{ts}.xlsx'
 
+    all_frames = []
+    for sheet_name, df in city_frames.items():
+        copy_df = df.copy()
+        for col in CANONICAL_COLUMNS:
+            if col not in copy_df.columns:
+                copy_df[col] = ''
+        all_frames.append(copy_df[CANONICAL_COLUMNS])
 
-def build_excel(city_frames: dict, output_dir: str, date_from: str, date_to: str, messages: list[str] | None = None) -> str:
-    os.makedirs(output_dir, exist_ok=True)
-    pretty_name = f'Архив_погоды_{date_from}_{date_to}.xlsx'
-    path = os.path.join(output_dir, translit_filename(pretty_name))
-
-    normalized_frames = {sheet: _normalize_frame(df) for sheet, df in city_frames.items()}
-    all_df = (
-        pd.concat(normalized_frames.values(), ignore_index=True)
-        if normalized_frames
-        else pd.DataFrame(columns=RP5_CANONICAL_COLUMNS)
-    )
-
-    columns_map = pd.DataFrame([
-        ['local_date', 'Локальная дата'],
-        ['local_time', 'Локальное время'],
-        ['datetime_local', 'Дата и время'],
-        ['city', 'Город из формы'],
-        ['station_name', 'Название станции'],
-        ['wmo_id', 'WMO ID'],
-        ['source_url', 'URL станции на RP5'],
-        ['T', 'Температура воздуха'],
-        ['Po', 'Атмосферное давление на уровне станции'],
-        ['P', 'Атмосферное давление на уровне моря'],
-        ['Pa', 'Барическая тенденция'],
-        ['U', 'Относительная влажность'],
-        ['DD', 'Направление ветра'],
-        ['Ff', 'Скорость ветра'],
-        ['ff10', 'Порывы за 10 минут'],
-        ['ff3', 'Порывы за 3 часа'],
-        ['N', 'Облачность'],
-        ['WW', 'Текущая погода'],
-        ['W1', 'Погода за прошлый срок'],
-        ['W2', 'Погода за предпрошлый срок'],
-        ['Tn', 'Минимальная температура'],
-        ['Tx', 'Максимальная температура'],
-        ['Cl', 'Облака нижнего яруса'],
-        ['Nh', 'Количество облаков нижнего яруса'],
-        ['H', 'Высота нижней границы облаков'],
-        ['Cm', 'Облака среднего яруса'],
-        ['Ch', 'Облака верхнего яруса'],
-        ['VV', 'Горизонтальная видимость'],
-        ['Td', 'Точка росы'],
-        ['RRR', 'Количество осадков'],
-        ['tR', 'Период осадков'],
-        ['E', 'Состояние поверхности почвы'],
-        ['Tg', 'Температура поверхности почвы'],
-        ['E_prime', 'Состояние снежного покрова/почвы'],
-        ['sss', 'Высота снежного покрова'],
-    ], columns=['column_name', 'description'])
-
-    readme_rows = [
-        ['Файл', pretty_name],
-        ['Создан', datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
-        ['Период', f'{date_from} — {date_to}'],
-        ['Успешных городов', len(normalized_frames)],
-        ['Листы', 'README, ALL_DATA, COLUMNS_MAP' + (', ' + ', '.join(normalized_frames.keys()) if normalized_frames else '')],
-        ['Принцип выравнивания', 'Все городские данные приводятся к единой схеме колонок, чтобы значения не сдвигались на общем листе.'],
-    ]
-
-    if messages:
-        for i, msg in enumerate(messages, start=1):
-            readme_rows.append([f'Статус {i}', msg])
-
-    readme = pd.DataFrame(readme_rows, columns=['Параметр', 'Значение'])
-
-    with pd.ExcelWriter(path, engine='openpyxl') as writer:
+    with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
+        readme = pd.DataFrame({
+            'item': ['generated_at', 'date_from', 'date_to', 'cities', 'notes'],
+            'value': [datetime.now().strftime('%Y-%m-%d %H:%M:%S'), date_from, date_to, len(city_frames), 'Полная выгрузка RP5 через CSV/GZ архив']
+        })
         readme.to_excel(writer, sheet_name='README', index=False)
-        all_df.to_excel(writer, sheet_name='ALL_DATA', index=False)
-        columns_map.to_excel(writer, sheet_name='COLUMNS_MAP', index=False)
 
-        for sheet_name, df in normalized_frames.items():
-            df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+        if all_frames:
+            alldf = pd.concat(all_frames, ignore_index=True)
+        else:
+            alldf = pd.DataFrame(columns=CANONICAL_COLUMNS)
+        alldf.to_excel(writer, sheet_name='ALLDATA', index=False)
 
-    wb = load_workbook(path)
-    for ws in wb.worksheets:
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
-    wb.save(path)
+        colmap = pd.DataFrame({'column_name': CANONICAL_COLUMNS})
+        colmap.to_excel(writer, sheet_name='COLUMNSMAP', index=False)
 
-    return path
+        for sheet_name, df in city_frames.items():
+            export_df = df.copy()
+            for col in CANONICAL_COLUMNS:
+                if col not in export_df.columns:
+                    export_df[col] = ''
+            export_df = export_df[CANONICAL_COLUMNS]
+            export_df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+
+        wb = writer.book
+        for ws in wb.worksheets:
+            for idx, col in enumerate(ws.columns, start=1):
+                width = max(len(str(c.value or '')) for c in col[:200]) if col else 12
+                ws.column_dimensions[get_column_letter(idx)].width = min(max(width + 2, 12), 28)
+            ws.freeze_panes = 'A2'
+
+    return str(out_path)
