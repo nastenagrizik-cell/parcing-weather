@@ -26,6 +26,7 @@ os.makedirs(EXPORT_DIR, exist_ok=True)
 app = FastAPI(title='Погодный архив RP5')
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
+templates.env.cache = None
 
 Base.metadata.create_all(bind=engine)
 
@@ -90,7 +91,14 @@ def run_export_task(run_id: int, date_from: str, date_to: str):
 def index(request: Request, db: Session = Depends(get_db)):
     cities = db.query(City).order_by(City.name).all()
     last_run = db.query(RunLog).order_by(RunLog.id.desc()).first()
-    return templates.TemplateResponse('index.html', {'request': request, 'cities': cities, 'last_run': last_run})
+    return templates.TemplateResponse(
+        request,
+        'index.html',
+        {
+            'cities': cities,
+            'last_run': last_run,
+        },
+    )
 
 
 @app.post('/cities/add')
